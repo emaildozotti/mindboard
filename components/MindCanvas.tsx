@@ -81,6 +81,7 @@ const MindCanvasContent = () => {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const mindMapRef = useRef(mindMap);
   mindMapRef.current = mindMap;
+  const shouldFitRef = useRef(false);
 
   // Persist to localStorage
   useEffect(() => {
@@ -142,8 +143,10 @@ const MindCanvasContent = () => {
     setNodes(rfNodes);
     setEdges(rfEdges);
 
-    // Auto-fit view after structural changes
-    setTimeout(() => fitView({ padding: 0.18, duration: 350 }), 60);
+    if (shouldFitRef.current) {
+      shouldFitRef.current = false;
+      setTimeout(() => fitView({ padding: 0.18, duration: 350 }), 60);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mindMap]);
 
@@ -162,6 +165,7 @@ const MindCanvasContent = () => {
 
   const handleAddChild = useCallback((parentId: string) => {
     const { map, newId } = addChild(mindMapRef.current, parentId);
+    shouldFitRef.current = true;
     setMindMap(map);
     setSelectedId(newId);
     setEditingId(newId);
@@ -171,12 +175,14 @@ const MindCanvasContent = () => {
     const current = mindMapRef.current;
     if (nodeId === current.rootId) return;
     const { map, newId } = addSibling(current, nodeId);
+    shouldFitRef.current = true;
     setMindMap(map);
     setSelectedId(newId);
     setEditingId(newId);
   }, [setMindMap]);
 
   const handleToggleCollapse = useCallback((nodeId: string) => {
+    shouldFitRef.current = true;
     setMindMap(toggleCollapse(mindMapRef.current, nodeId));
   }, [setMindMap]);
 
@@ -220,6 +226,7 @@ const MindCanvasContent = () => {
         e.preventDefault();
         const node = mindMapRef.current.nodes[selectedId];
         const newSel = node?.parentId ?? mindMapRef.current.rootId;
+        shouldFitRef.current = true;
         setMindMap(deleteNode(mindMapRef.current, selectedId));
         setSelectedId(newSel);
         setEditingId(null);
@@ -299,6 +306,7 @@ const MindCanvasContent = () => {
     reader.onload = (ev) => {
       try {
         const json = JSON.parse(ev.target?.result as string);
+        shouldFitRef.current = true;
         setMindMap(jsonToMap(json));
         setSelectedId(json.root?.id ?? 'root');
         setEditingId(null);
@@ -311,6 +319,7 @@ const MindCanvasContent = () => {
   const newMap = useCallback(() => {
     if (!confirm('Criar novo mapa? O atual será apagado.')) return;
     const m = createInitialMap();
+    shouldFitRef.current = true;
     dispatch({ type: 'SET', payload: m });
     setSelectedId(m.rootId);
     setEditingId(null);

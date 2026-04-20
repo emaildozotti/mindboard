@@ -29,7 +29,7 @@ export default function MindNode({ id, data }: NodeProps<MindNodeData>) {
 
   useEffect(() => {
     if (data.isEditing) {
-      const t = setTimeout(() => inputRef.current?.focus(), 30);
+      const t = setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 30);
       return () => clearTimeout(t);
     }
   }, [data.isEditing]);
@@ -58,7 +58,6 @@ export default function MindNode({ id, data }: NodeProps<MindNodeData>) {
           {data.isEditing ? (
             <input
               ref={inputRef}
-              autoFocus
               value={localText}
               onChange={e => setLocalText(e.target.value)}
               onBlur={save}
@@ -98,7 +97,6 @@ export default function MindNode({ id, data }: NodeProps<MindNodeData>) {
           {data.isEditing ? (
             <input
               ref={inputRef}
-              autoFocus
               value={localText}
               onChange={e => setLocalText(e.target.value)}
               onBlur={save}

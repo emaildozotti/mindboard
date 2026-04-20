@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import ReactFlow, {
   useNodesState, useEdgesState, Controls, Background, BackgroundVariant,
   ConnectionMode, ReactFlowProvider, useReactFlow, Node, Edge
@@ -19,71 +19,82 @@ const nodeTypes = { mind: MindNode };
 const edgeTypes = { mind: MindEdge };
 const STORAGE_KEY = 'mindboard-map';
 
+// ── Undo/Redo reducer ──────────────────────────────────────────────
+type HistoryState = { past: MindMap[]; present: MindMap; future: MindMap[] };
+type HistoryAction =
+  | { type: 'SET'; payload: MindMap }
+  | { type: 'UNDO' }
+  | { type: 'REDO' };
+
+function historyReducer(state: HistoryState, action: HistoryAction): HistoryState {
+  switch (action.type) {
+    case 'SET':
+      return { past: [...state.past.slice(-49), state.present], present: action.payload, future: [] };
+    case 'UNDO':
+      if (state.past.length === 0) return state;
+      return { past: state.past.slice(0, -1), present: state.past[state.past.length - 1], future: [state.present, ...state.future.slice(0, 49)] };
+    case 'REDO':
+      if (state.future.length === 0) return state;
+      return { past: [...state.past.slice(-49), state.present], present: state.future[0], future: state.future.slice(1) };
+  }
+}
+
+function loadInitial(): MindMap {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (!parsed.title) parsed.title = 'Meu Mapa';
+      return parsed;
+    }
+  } catch { /* ignore */ }
+  return createInitialMap();
+}
+
+// ── Main Canvas ────────────────────────────────────────────────────
 const MindCanvasContent = () => {
-  const [mindMap, setMindMap] = useState<MindMap>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) return JSON.parse(stored);
-    } catch { /* ignore */ }
-    return createInitialMap();
-  });
+  const [history, dispatch] = useReducer(historyReducer, undefined, () => ({
+    past: [],
+    present: loadInitial(),
+    future: [],
+  }));
+
+  const mindMap = history.present;
+  const canUndo = history.past.length > 0;
+  const canRedo = history.future.length > 0;
+
+  const setMindMap = useCallback((updater: MindMap | ((m: MindMap) => MindMap)) => {
+    dispatch({
+      type: 'SET',
+      payload: typeof updater === 'function' ? updater(mindMapRef.current) : updater,
+    });
+  }, []);
+
+  const undo = useCallback(() => dispatch({ type: 'UNDO' }), []);
+  const redo = useCallback(() => dispatch({ type: 'REDO' }), []);
 
   const [selectedId, setSelectedId] = useState<string | null>('root');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const { fitView } = useReactFlow();
+  const { fitView, zoomIn, zoomOut } = useReactFlow();
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const mindMapRef = useRef(mindMap);
+  mindMapRef.current = mindMap;
 
-  // Save to localStorage whenever map changes
+  // Persist to localStorage
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(mindMap));
   }, [mindMap]);
 
-  // Stable callback refs to avoid stale closures in useEffect
-  const mindMapRef = useRef(mindMap);
-  mindMapRef.current = mindMap;
-
-  const handleAddChild = useCallback((parentId: string) => {
-    const { map, newId } = addChild(mindMapRef.current, parentId);
-    setMindMap(map);
-    setSelectedId(newId);
-    setEditingId(newId);
-  }, []);
-
-  const handleAddSibling = useCallback((nodeId: string) => {
-    const current = mindMapRef.current;
-    if (nodeId === current.rootId) return;
-    const { map, newId } = addSibling(current, nodeId);
-    setMindMap(map);
-    setSelectedId(newId);
-    setEditingId(newId);
-  }, []);
-
-  const handleToggleCollapse = useCallback((nodeId: string) => {
-    setMindMap(m => toggleCollapse(m, nodeId));
-  }, []);
-
-  const handleTextChange = useCallback((nodeId: string, text: string) => {
-    setMindMap(m => updateText(m, nodeId, text));
-  }, []);
-
-  const handleStopEdit = useCallback((_nodeId: string) => {
-    setEditingId(null);
-  }, []);
-
-  const handleSelect = useCallback((nodeId: string) => {
-    setSelectedId(nodeId);
-    setEditingId(nodeId);
-  }, []);
-
-  // Convert MindMap → ReactFlow nodes/edges + apply layout
+  // Convert MindMap → ReactFlow nodes/edges + apply layout + auto-fitView
   useEffect(() => {
     const positions = computeLayout(mindMap);
     const rfNodes: Node[] = [];
     const rfEdges: Edge[] = [];
 
     Object.values(mindMap.nodes).forEach(node => {
+      if (!node) return;
       const pos = positions[node.id] ?? { x: 0, y: 0 };
       rfNodes.push({
         id: node.id,
@@ -108,7 +119,6 @@ const MindCanvasContent = () => {
       });
 
       if (node.parentId) {
-        // Only add edge if parent node is not collapsed
         const parent = mindMap.nodes[node.parentId];
         if (parent && !parent.collapsed) {
           rfEdges.push({
@@ -124,11 +134,73 @@ const MindCanvasContent = () => {
 
     setNodes(rfNodes);
     setEdges(rfEdges);
-  }, [mindMap, selectedId, editingId, handleAddChild, handleToggleCollapse, handleTextChange, handleStopEdit, handleSelect]);
+
+    // Auto-fit view after structural changes
+    setTimeout(() => fitView({ padding: 0.18, duration: 350 }), 60);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mindMap]);
+
+  // Update only node data when selection/editing changes (no layout recompute)
+  useEffect(() => {
+    setNodes(ns => ns.map(n => ({
+      ...n,
+      data: {
+        ...n.data,
+        isEditing: editingId === n.id,
+        selected: selectedId === n.id,
+      },
+    })));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, editingId]);
+
+  const handleAddChild = useCallback((parentId: string) => {
+    const { map, newId } = addChild(mindMapRef.current, parentId);
+    setMindMap(map);
+    setSelectedId(newId);
+    setEditingId(newId);
+  }, [setMindMap]);
+
+  const handleAddSibling = useCallback((nodeId: string) => {
+    const current = mindMapRef.current;
+    if (nodeId === current.rootId) return;
+    const { map, newId } = addSibling(current, nodeId);
+    setMindMap(map);
+    setSelectedId(newId);
+    setEditingId(newId);
+  }, [setMindMap]);
+
+  const handleToggleCollapse = useCallback((nodeId: string) => {
+    setMindMap(toggleCollapse(mindMapRef.current, nodeId));
+  }, [setMindMap]);
+
+  const handleTextChange = useCallback((nodeId: string, text: string) => {
+    setMindMap(updateText(mindMapRef.current, nodeId, text));
+  }, [setMindMap]);
+
+  const handleStopEdit = useCallback((_nodeId: string) => {
+    setEditingId(null);
+  }, []);
+
+  const handleSelect = useCallback((nodeId: string) => {
+    setSelectedId(nodeId);
+    setEditingId(nodeId);
+  }, []);
+
+  const handleTitleChange = useCallback((title: string) => {
+    setMindMap({ ...mindMapRef.current, title });
+  }, [setMindMap]);
+
+  const handleCenter = useCallback(() => {
+    fitView({ padding: 0.18, duration: 500 });
+  }, [fitView]);
 
   // Keyboard shortcuts
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      // Undo/Redo (global, even outside input)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); redo(); return; }
+
       if (!selectedId) return;
       const tag = (e.target as HTMLElement).tagName;
       if (['INPUT', 'TEXTAREA'].includes(tag) && editingId) {
@@ -140,8 +212,8 @@ const MindCanvasContent = () => {
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId !== mindMapRef.current.rootId) {
         e.preventDefault();
         const node = mindMapRef.current.nodes[selectedId];
-        const newSel = node.parentId ?? mindMapRef.current.rootId;
-        setMindMap(m => deleteNode(m, selectedId));
+        const newSel = node?.parentId ?? mindMapRef.current.rootId;
+        setMindMap(deleteNode(mindMapRef.current, selectedId));
         setSelectedId(newSel);
         setEditingId(null);
       }
@@ -149,34 +221,26 @@ const MindCanvasContent = () => {
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [selectedId, editingId, handleAddChild, handleAddSibling]);
+  }, [selectedId, editingId, handleAddChild, handleAddSibling, undo, redo, setMindMap]);
 
   // Export image
   const exportImage = useCallback(async (format: 'png' | 'jpg' | 'pdf') => {
     const viewportEl = wrapperRef.current?.querySelector('.react-flow__viewport') as HTMLElement;
-    if (!viewportEl || !Object.keys(mindMapRef.current.nodes).length) return;
+    if (!viewportEl) return;
 
-    // Fit view first
     fitView({ padding: 0.15, duration: 0 });
     await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
-    // Compute bounds from current nodes state
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    const currentNodes = Array.from(viewportEl.querySelectorAll('.react-flow__node'));
-    currentNodes.forEach(el => {
+    viewportEl.querySelectorAll('.react-flow__node').forEach(el => {
       const htmlEl = el as HTMLElement;
-      const transform = htmlEl.style.transform;
-      const match = transform.match(/translate\(([^,]+)px,\s*([^)]+)px\)/);
+      const match = htmlEl.style.transform.match(/translate\(([^,]+)px,\s*([^)]+)px\)/);
       if (match) {
-        const x = parseFloat(match[1]);
-        const y = parseFloat(match[2]);
-        minX = Math.min(minX, x);
-        minY = Math.min(minY, y);
-        maxX = Math.max(maxX, x + htmlEl.offsetWidth);
-        maxY = Math.max(maxY, y + htmlEl.offsetHeight);
+        const x = parseFloat(match[1]), y = parseFloat(match[2]);
+        minX = Math.min(minX, x); minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x + htmlEl.offsetWidth); maxY = Math.max(maxY, y + htmlEl.offsetHeight);
       }
     });
-
     if (!isFinite(minX)) { minX = -200; minY = -100; maxX = 200; maxY = 100; }
 
     const pad = 80;
@@ -184,9 +248,7 @@ const MindCanvasContent = () => {
     const scale = Math.min(2, Math.min(3000 / (cw + pad * 2), 3000 / (ch + pad * 2)));
     const imgW = Math.round((cw + pad * 2) * scale);
     const imgH = Math.round((ch + pad * 2) * scale);
-    const tx = (pad - minX) * scale, ty = (pad - minY) * scale;
-
-    const bg = format === 'jpg' ? '#ffffff' : '#f8fafc';
+    const bg = format === 'jpg' ? '#ffffff' : '#f0f2f8';
     const filename = `mindmap-${new Date().toISOString().slice(0, 10)}`;
     const opts = {
       backgroundColor: bg,
@@ -196,36 +258,25 @@ const MindCanvasContent = () => {
       style: {
         width: `${imgW}px`,
         height: `${imgH}px`,
-        transform: `translate(${tx}px,${ty}px) scale(${scale})`,
+        transform: `translate(${(pad - minX) * scale}px,${(pad - minY) * scale}px) scale(${scale})`,
         transformOrigin: 'top left'
       }
     };
 
-    const dataUrl = format === 'jpg'
-      ? await toJpeg(viewportEl, { ...opts, quality: 0.95 })
-      : await toPng(viewportEl, opts);
+    const dataUrl = format === 'jpg' ? await toJpeg(viewportEl, { ...opts, quality: 0.95 }) : await toPng(viewportEl, opts);
 
     if (format === 'pdf') {
-      const img = new Image();
-      img.src = dataUrl;
+      const img = new Image(); img.src = dataUrl;
       await new Promise<void>(r => { img.onload = () => r(); });
-      const pdf = new jsPDF({
-        orientation: imgW > imgH ? 'landscape' : 'portrait',
-        unit: 'px',
-        format: [imgW, imgH],
-        hotfixes: ['px_scaling']
-      });
+      const pdf = new jsPDF({ orientation: imgW > imgH ? 'landscape' : 'portrait', unit: 'px', format: [imgW, imgH], hotfixes: ['px_scaling'] });
       pdf.addImage(dataUrl, 'PNG', 0, 0, imgW, imgH);
       pdf.save(`${filename}.pdf`);
     } else {
       const a = document.createElement('a');
-      a.href = dataUrl;
-      a.download = `${filename}.${format}`;
-      a.click();
+      a.href = dataUrl; a.download = `${filename}.${format}`; a.click();
     }
   }, [fitView]);
 
-  // Export JSON
   const exportJSON = useCallback(() => {
     const json = mapToJSON(mindMapRef.current);
     const a = document.createElement('a');
@@ -234,7 +285,6 @@ const MindCanvasContent = () => {
     a.click();
   }, []);
 
-  // Import JSON
   const importJSON = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -243,28 +293,37 @@ const MindCanvasContent = () => {
       try {
         const json = JSON.parse(ev.target?.result as string);
         setMindMap(jsonToMap(json));
-        setSelectedId(json.root.id);
+        setSelectedId(json.root?.id ?? 'root');
         setEditingId(null);
-        setTimeout(() => fitView({ padding: 0.15, duration: 500 }), 100);
       } catch { alert('JSON inválido.'); }
     };
     reader.readAsText(file);
     e.target.value = '';
-  }, [fitView]);
+  }, [setMindMap]);
 
-  // Clear / new map
   const newMap = useCallback(() => {
     if (!confirm('Criar novo mapa? O atual será apagado.')) return;
     const m = createInitialMap();
-    setMindMap(m);
+    dispatch({ type: 'SET', payload: m });
     setSelectedId(m.rootId);
     setEditingId(null);
-    setTimeout(() => fitView({ padding: 0.2 }), 100);
-  }, [fitView]);
+  }, []);
 
   return (
-    <div className="w-full h-full flex flex-col bg-slate-50">
-      <Toolbar onExportImage={exportImage} onExportJSON={exportJSON} onImport={importJSON} onNew={newMap} />
+    <div className="w-full h-full flex flex-col" style={{ background: '#f0f2f8' }}>
+      <Toolbar
+        title={mindMap.title}
+        onTitleChange={handleTitleChange}
+        onExportImage={exportImage}
+        onExportJSON={exportJSON}
+        onImport={importJSON}
+        onNew={newMap}
+        onUndo={undo}
+        onRedo={redo}
+        onCenter={handleCenter}
+        canUndo={canUndo}
+        canRedo={canRedo}
+      />
       <div className="flex-1 relative" ref={wrapperRef}>
         <ReactFlow
           nodes={nodes}
@@ -278,17 +337,36 @@ const MindCanvasContent = () => {
           panOnScroll
           selectionOnDrag={false}
           fitView
-          style={{ width: '100%', height: '100%' }}
+          style={{ width: '100%', height: '100%', background: 'transparent' }}
           onNodeClick={(_, node) => setSelectedId(node.id)}
           onNodeDoubleClick={(_, node) => { setSelectedId(node.id); setEditingId(node.id); }}
           onPaneClick={() => { setSelectedId(null); setEditingId(null); }}
         >
-          <Controls showInteractive={false} />
-          <Background color="#cbd5e1" gap={24} size={1} variant={BackgroundVariant.Dots} />
+          <Background color="#c8cfe8" gap={28} size={1} variant={BackgroundVariant.Dots} />
         </ReactFlow>
+
+        {/* Floating zoom controls */}
+        <div className="absolute bottom-6 left-6 flex flex-col gap-1 z-50">
+          <button
+            onClick={() => zoomIn({ duration: 200 })}
+            className="w-8 h-8 rounded-lg bg-white shadow border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50 transition-colors font-bold text-base"
+            title="Zoom In"
+          >+</button>
+          <button
+            onClick={handleCenter}
+            className="w-8 h-8 rounded-lg bg-white shadow border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50 transition-colors text-xs font-bold"
+            title="Centralizar"
+          >&#8857;</button>
+          <button
+            onClick={() => zoomOut({ duration: 200 })}
+            className="w-8 h-8 rounded-lg bg-white shadow border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50 transition-colors font-bold text-base"
+            title="Zoom Out"
+          >&#8722;</button>
+        </div>
+
         {/* Keyboard hint */}
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-xs text-slate-400 bg-white/80 backdrop-blur-sm px-4 py-2 rounded-full shadow-sm border border-slate-100 select-none">
-          Tab = filho  ·  Enter = irmão  ·  Delete = remover  ·  F2 = editar  ·  Duplo clique = editar
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 text-xs text-slate-400 bg-white/90 backdrop-blur-sm px-4 py-2 rounded-full shadow-sm border border-slate-100 select-none whitespace-nowrap">
+          <span className="font-semibold text-slate-500">Tab</span> filho &middot; <span className="font-semibold text-slate-500">Enter</span> irmão &middot; <span className="font-semibold text-slate-500">Del</span> remover &middot; <span className="font-semibold text-slate-500">F2</span> editar &middot; <span className="font-semibold text-slate-500">Ctrl+Z</span> desfazer
         </div>
       </div>
     </div>

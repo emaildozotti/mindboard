@@ -9,6 +9,7 @@ export function createInitialMap(): MindMap {
   const rootId = 'root';
   return {
     rootId,
+    title: 'Meu Mapa',
     nodes: {
       [rootId]: { id: rootId, text: 'Meu Mapa Mental', children: [], collapsed: false, depth: 0, branchColor: '#4f46e5', parentId: null },
     },
@@ -121,5 +122,5 @@ export function jsonToMap(json: MindMapJSON): MindMap {
   }
 
   fromJSON(json.root, null, 0);
-  return assignColors({ nodes, rootId: json.root.id });
+  return assignColors({ nodes, rootId: json.root.id, title: json.title ?? 'Meu Mapa' });
 }

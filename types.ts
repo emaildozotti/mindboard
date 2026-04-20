@@ -11,6 +11,7 @@ export interface MindNode {
 export interface MindMap {
   nodes: Record<string, MindNode>;
   rootId: string;
+  title: string;
 }
 
 // Formato JSON para import/export (hierarchical, fácil de criar no Claude)

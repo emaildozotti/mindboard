@@ -27,6 +27,13 @@ export default function MindNode({ id, data }: NodeProps<MindNodeData>) {
 
   useEffect(() => { setLocalText(data.text); }, [data.text]);
 
+  useEffect(() => {
+    if (data.isEditing) {
+      const t = setTimeout(() => inputRef.current?.focus(), 30);
+      return () => clearTimeout(t);
+    }
+  }, [data.isEditing]);
+
   const save = () => {
     data.onTextChange(id, localText || (isRoot ? 'Meu Mapa' : 'Nova ideia'));
     data.onStopEdit(id);

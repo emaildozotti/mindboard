@@ -1,36 +1,51 @@
 import { MindMap } from '../types';
 
-const ROOT_RADIUS = 260;
-const LEVEL_RADIUS = 200;
-const MIN_ANGLE_PER_LEAF = 0.35; // radianos mínimos por folha
+const H_GAP = 260;   // horizontal gap between depth levels
+const V_GAP = 70;    // vertical gap between sibling nodes
 
-export function countVisibleLeaves(map: MindMap, nodeId: string): number {
+function subtreeLeaves(map: MindMap, nodeId: string): number {
   const node = map.nodes[nodeId];
   if (!node || node.collapsed || node.children.length === 0) return 1;
-  return node.children.reduce((sum, cId) => sum + countVisibleLeaves(map, cId), 0);
+  return node.children.reduce((s, c) => s + subtreeLeaves(map, c), 0);
 }
 
 export function computeLayout(map: MindMap): Record<string, { x: number; y: number }> {
   const positions: Record<string, { x: number; y: number }> = {};
 
-  function layout(nodeId: string, cx: number, cy: number, startAngle: number, endAngle: number, depth: number) {
-    positions[nodeId] = { x: cx, y: cy };
+  // Place children in order, then center parent between first and last child
+  function place(nodeId: string, depth: number, yStart: number): number {
     const node = map.nodes[nodeId];
-    if (!node || node.collapsed || node.children.length === 0) return;
+    if (!node) return yStart + V_GAP;
 
-    const totalLeaves = node.children.reduce((s, c) => s + countVisibleLeaves(map, c), 0);
-    const radius = depth === 0 ? ROOT_RADIUS : LEVEL_RADIUS;
-    let cur = startAngle;
+    const x = depth * H_GAP;
 
-    node.children.forEach((childId) => {
-      const leaves = countVisibleLeaves(map, childId);
-      const share = (endAngle - startAngle) * (leaves / totalLeaves);
-      const mid = cur + share / 2;
-      layout(childId, cx + Math.cos(mid) * radius, cy + Math.sin(mid) * radius, cur, cur + share, depth + 1);
-      cur += share;
+    if (node.collapsed || node.children.length === 0) {
+      positions[nodeId] = { x, y: yStart };
+      return yStart + V_GAP;
+    }
+
+    let curY = yStart;
+    node.children.forEach(childId => {
+      curY = place(childId, depth + 1, curY);
     });
+
+    const firstY = positions[node.children[0]]?.y ?? yStart;
+    const lastY = positions[node.children[node.children.length - 1]]?.y ?? yStart;
+    positions[nodeId] = { x, y: (firstY + lastY) / 2 };
+
+    return curY;
   }
 
-  layout(map.rootId, 0, 0, 0, 2 * Math.PI, 0);
+  place(map.rootId, 0, 0);
+
+  // Center whole tree around y=0
+  const allY = Object.values(positions).map(p => p.y);
+  const minY = Math.min(...allY);
+  const maxY = Math.max(...allY);
+  const offset = (minY + maxY) / 2;
+  Object.keys(positions).forEach(id => {
+    positions[id] = { x: positions[id].x, y: positions[id].y - offset };
+  });
+
   return positions;
 }

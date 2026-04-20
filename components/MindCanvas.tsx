@@ -89,12 +89,22 @@ const MindCanvasContent = () => {
 
   // Convert MindMap → ReactFlow nodes/edges + apply layout + auto-fitView
   useEffect(() => {
+    // Only render nodes visible (not hidden by a collapsed ancestor)
+    const visibleIds = new Set<string>();
+    const visit = (id: string) => {
+      const n = mindMap.nodes[id];
+      if (!n) return;
+      visibleIds.add(id);
+      if (!n.collapsed) n.children.forEach(visit);
+    };
+    visit(mindMap.rootId);
+
     const positions = computeLayout(mindMap);
     const rfNodes: Node[] = [];
     const rfEdges: Edge[] = [];
 
     Object.values(mindMap.nodes).forEach(node => {
-      if (!node) return;
+      if (!node || !visibleIds.has(node.id)) return;
       const pos = positions[node.id] ?? { x: 0, y: 0 };
       rfNodes.push({
         id: node.id,
@@ -118,17 +128,14 @@ const MindCanvasContent = () => {
         },
       });
 
-      if (node.parentId) {
-        const parent = mindMap.nodes[node.parentId];
-        if (parent && !parent.collapsed) {
-          rfEdges.push({
-            id: `e-${node.parentId}-${node.id}`,
-            source: node.parentId,
-            target: node.id,
-            type: 'mind',
-            data: { color: node.branchColor, depth: node.depth },
-          });
-        }
+      if (node.parentId && visibleIds.has(node.parentId)) {
+        rfEdges.push({
+          id: `e-${node.parentId}-${node.id}`,
+          source: node.parentId,
+          target: node.id,
+          type: 'mind',
+          data: { color: node.branchColor, depth: node.depth },
+        });
       }
     });
 

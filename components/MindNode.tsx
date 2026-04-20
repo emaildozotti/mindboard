@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { NodeProps, Handle, Position } from 'reactflow';
-import { ChevronRight, ChevronDown } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 
 export interface MindNodeData {
   text: string;
@@ -115,7 +115,7 @@ export default function MindNode({ id, data }: NodeProps<MindNodeData>) {
               className="absolute -right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-white shadow z-10"
               style={{ background: color, border: '2px solid white' }}
             >
-              {data.collapsed ? <ChevronRight size={9} strokeWidth={3} /> : <ChevronDown size={9} strokeWidth={3} />}
+              {data.collapsed ? <span style={{ fontSize: 9, fontWeight: 800, lineHeight: 1 }}>{data.childCount}</span> : <ChevronDown size={9} strokeWidth={3} />}
             </button>
           )}
         </div>

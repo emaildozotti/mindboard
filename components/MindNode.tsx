@@ -52,6 +52,7 @@ export default function MindNode({ id, data }: NodeProps<MindNodeData>) {
           {data.isEditing ? (
             <input
               ref={inputRef}
+              autoFocus
               value={localText}
               onChange={e => setLocalText(e.target.value)}
               onBlur={save}
@@ -63,8 +64,8 @@ export default function MindNode({ id, data }: NodeProps<MindNodeData>) {
             <span className="text-white font-black text-lg leading-tight block">{data.text || 'Mapa Mental'}</span>
           )}
         </div>
-        <Handle type="target" position={Position.Left} style={{ opacity: 0, width: 1, height: 1, minWidth: 0, minHeight: 0 }} />
-        <Handle type="source" position={Position.Right} style={{ opacity: 0, width: 1, height: 1, minWidth: 0, minHeight: 0 }} />
+        <Handle type="target" position={Position.Left} style={{ opacity: 0, width: 1, height: 1, minWidth: 0, minHeight: 0, pointerEvents: 'none' }} />
+        <Handle type="source" position={Position.Right} style={{ opacity: 0, width: 1, height: 1, minWidth: 0, minHeight: 0, pointerEvents: 'none' }} />
         {/* Add child button */}
         <button
           onMouseDown={e => { e.stopPropagation(); data.onAddChild(id); }}
@@ -96,6 +97,7 @@ export default function MindNode({ id, data }: NodeProps<MindNodeData>) {
           {data.isEditing ? (
             <input
               ref={inputRef}
+              autoFocus
               value={localText}
               onChange={e => setLocalText(e.target.value)}
               onBlur={save}
@@ -117,8 +119,8 @@ export default function MindNode({ id, data }: NodeProps<MindNodeData>) {
             </button>
           )}
         </div>
-        <Handle type="target" position={Position.Left} style={{ opacity: 0, width: 1, height: 1, minWidth: 0, minHeight: 0 }} />
-        <Handle type="source" position={Position.Right} style={{ opacity: 0, width: 1, height: 1, minWidth: 0, minHeight: 0 }} />
+        <Handle type="target" position={Position.Left} style={{ opacity: 0, width: 1, height: 1, minWidth: 0, minHeight: 0, pointerEvents: 'none' }} />
+        <Handle type="source" position={Position.Right} style={{ opacity: 0, width: 1, height: 1, minWidth: 0, minHeight: 0, pointerEvents: 'none' }} />
         <button
           onMouseDown={e => { e.stopPropagation(); data.onAddChild(id); }}
           className="absolute opacity-0 group-hover:opacity-100 transition-opacity -right-8 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full flex items-center justify-center shadow-md z-10"

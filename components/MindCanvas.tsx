@@ -48,7 +48,7 @@ const MindCanvasContent = () => {
     const { map, newId } = addChild(mindMapRef.current, parentId);
     setMindMap(map);
     setSelectedId(newId);
-    setTimeout(() => setEditingId(newId), 50);
+    setEditingId(newId);
   }, []);
 
   const handleAddSibling = useCallback((nodeId: string) => {
@@ -57,7 +57,7 @@ const MindCanvasContent = () => {
     const { map, newId } = addSibling(current, nodeId);
     setMindMap(map);
     setSelectedId(newId);
-    setTimeout(() => setEditingId(newId), 50);
+    setEditingId(newId);
   }, []);
 
   const handleToggleCollapse = useCallback((nodeId: string) => {

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { NodeProps, Handle, Position } from 'reactflow';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 
 export interface MindNodeData {
   text: string;
@@ -47,13 +47,12 @@ export default function MindNode({ id, data }: NodeProps<MindNodeData>) {
           background: `linear-gradient(135deg, ${color}, ${color}bb)`,
           borderRadius: 28,
           padding: '13px 28px',
-          boxShadow: data.selected
+          boxShadow: (!data.isEditing && data.selected)
             ? `0 0 0 3px white, 0 0 0 6px ${color}, 0 8px 32px ${color}55`
             : `0 6px 24px ${color}44, 0 2px 8px rgba(0,0,0,0.12)`,
           border: `2px solid ${color}`,
           textAlign: 'center',
           cursor: 'pointer',
-          transition: 'box-shadow 0.2s ease',
         }}>
           {data.isEditing ? (
             <input
@@ -62,8 +61,8 @@ export default function MindNode({ id, data }: NodeProps<MindNodeData>) {
               onChange={e => setLocalText(e.target.value)}
               onBlur={save}
               onKeyDown={e => { if (e.key === 'Enter') save(); e.stopPropagation(); }}
-              className="bg-transparent text-white font-black text-lg outline-none text-center w-full"
-              style={{ minWidth: 120 }}
+              className="bg-transparent text-white font-black text-lg outline-none text-center"
+              style={{ width: '100%', minWidth: 120, maxWidth: 240 }}
             />
           ) : (
             <span className="text-white font-black text-lg leading-tight block select-none">{data.text || 'Meu Mapa'}</span>
@@ -85,13 +84,12 @@ export default function MindNode({ id, data }: NodeProps<MindNodeData>) {
             background: color,
             borderRadius: 22,
             padding: '9px 18px',
-            boxShadow: data.selected
+            boxShadow: (!data.isEditing && data.selected)
               ? `0 0 0 3px white, 0 0 0 5px ${color}`
               : `0 3px 12px ${color}44`,
             textAlign: 'center',
             cursor: 'pointer',
             position: 'relative',
-            transition: 'box-shadow 0.2s ease',
           }}
         >
           {data.isEditing ? (
@@ -101,8 +99,8 @@ export default function MindNode({ id, data }: NodeProps<MindNodeData>) {
               onChange={e => setLocalText(e.target.value)}
               onBlur={save}
               onKeyDown={e => { if (e.key === 'Enter') save(); e.stopPropagation(); }}
-              className="bg-transparent text-white font-bold text-sm outline-none text-center w-full"
-              style={{ minWidth: 80 }}
+              className="bg-transparent text-white font-bold text-sm outline-none text-center"
+              style={{ width: '100%', minWidth: 80, maxWidth: 200 }}
             />
           ) : (
             <span className="text-white font-bold text-sm leading-tight block select-none">{data.text || 'Nova ideia'}</span>
@@ -113,7 +111,9 @@ export default function MindNode({ id, data }: NodeProps<MindNodeData>) {
               className="absolute -right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-white shadow z-10"
               style={{ background: color, border: '2px solid white' }}
             >
-              {data.collapsed ? <span style={{ fontSize: 9, fontWeight: 800, lineHeight: 1 }}>{data.childCount}</span> : <ChevronDown size={9} strokeWidth={3} />}
+              {data.collapsed
+                ? <span style={{ fontSize: 9, fontWeight: 800, lineHeight: 1 }}>{data.childCount}</span>
+                : <ChevronDown size={9} strokeWidth={3} />}
             </button>
           )}
         </div>
@@ -123,7 +123,7 @@ export default function MindNode({ id, data }: NodeProps<MindNodeData>) {
     );
   }
 
-  // Level 2+ nodes — colored pill (tinted, not white card)
+  // Level 2+ nodes — colored pill
   return (
     <div className="relative group" style={{ minWidth: 110 }}>
       <div
@@ -132,12 +132,11 @@ export default function MindNode({ id, data }: NodeProps<MindNodeData>) {
           background: `${color}18`,
           borderRadius: 999,
           padding: '6px 16px',
-          border: data.selected ? `2px solid ${color}` : `1.5px solid ${color}50`,
-          boxShadow: data.selected
+          border: (!data.isEditing && data.selected) ? `2px solid ${color}` : `1.5px solid ${color}50`,
+          boxShadow: (!data.isEditing && data.selected)
             ? `0 0 0 2px white, 0 0 0 4px ${color}80`
             : `0 1px 4px ${color}20`,
           cursor: 'pointer',
-          transition: 'all 0.15s ease',
           position: 'relative',
           whiteSpace: 'nowrap',
         }}
@@ -145,18 +144,17 @@ export default function MindNode({ id, data }: NodeProps<MindNodeData>) {
         {data.isEditing ? (
           <input
             ref={inputRef}
-            autoFocus
             value={localText}
             onChange={e => setLocalText(e.target.value)}
             onBlur={save}
             onKeyDown={e => { if (e.key === 'Enter') save(); e.stopPropagation(); }}
-            className="outline-none text-sm font-semibold bg-transparent w-full"
-            style={{ color: color, minWidth: 80 }}
+            className="outline-none text-sm font-semibold bg-transparent"
+            style={{ color, minWidth: 80, maxWidth: 200, width: `${Math.max(localText.length, 8)}ch` }}
           />
         ) : (
           <span
             className="text-sm font-semibold leading-tight block select-none"
-            style={{ color: color }}
+            style={{ color }}
           >
             {data.text || 'Nova ideia'}
           </span>
@@ -167,13 +165,14 @@ export default function MindNode({ id, data }: NodeProps<MindNodeData>) {
             className="absolute -right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full flex items-center justify-center shadow z-10"
             style={{ background: color, color: 'white', border: '1.5px solid white' }}
           >
-            {data.collapsed ? <ChevronRight size={8} strokeWidth={3} /> : <ChevronDown size={8} strokeWidth={3} />}
+            {data.collapsed
+              ? <span style={{ fontSize: 9, fontWeight: 800, lineHeight: 1 }}>{data.childCount}</span>
+              : <ChevronDown size={8} strokeWidth={3} />}
           </button>
         )}
       </div>
       <Handle type="target" position={Position.Left} style={HANDLE_STYLE} />
       <Handle type="source" position={Position.Right} style={HANDLE_STYLE} />
-      <AddButton />
     </div>
   );
 }

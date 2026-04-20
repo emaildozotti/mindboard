@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { NodeProps, Handle, Position } from 'reactflow';
-import { Plus, ChevronRight, ChevronDown } from 'lucide-react';
+import { ChevronRight, ChevronDown } from 'lucide-react';
 
 export interface MindNodeData {
   text: string;
@@ -39,18 +39,6 @@ export default function MindNode({ id, data }: NodeProps<MindNodeData>) {
     data.onStopEdit(id);
   };
 
-  // Shared add-child button
-  const AddButton = () => (
-    <button
-      onMouseDown={e => { e.stopPropagation(); data.onAddChild(id); }}
-      className="absolute -right-8 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full flex items-center justify-center shadow-md z-20 opacity-0 group-hover:opacity-100 transition-all"
-      style={{ background: color, color: 'white' }}
-      title="Adicionar filho (Tab)"
-    >
-      <Plus size={12} strokeWidth={3} />
-    </button>
-  );
-
   // Root node
   if (isRoot) {
     return (
@@ -84,7 +72,6 @@ export default function MindNode({ id, data }: NodeProps<MindNodeData>) {
         </div>
         <Handle type="target" position={Position.Left} style={HANDLE_STYLE} />
         <Handle type="source" position={Position.Right} style={HANDLE_STYLE} />
-        <AddButton />
       </div>
     );
   }
@@ -134,7 +121,6 @@ export default function MindNode({ id, data }: NodeProps<MindNodeData>) {
         </div>
         <Handle type="target" position={Position.Left} style={HANDLE_STYLE} />
         <Handle type="source" position={Position.Right} style={HANDLE_STYLE} />
-        <AddButton />
       </div>
     );
   }

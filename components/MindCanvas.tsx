@@ -334,6 +334,7 @@ const MindCanvasContent = () => {
           edgeTypes={edgeTypes}
           connectionMode={ConnectionMode.Loose}
           panOnDrag={[1, 2]}
+          zoomOnDoubleClick={false}
           panOnScroll
           selectionOnDrag={false}
           fitView

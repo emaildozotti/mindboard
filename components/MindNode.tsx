@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { NodeProps, Handle, Position } from 'reactflow';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 
 export interface MindNodeData {
   text: string;
@@ -19,6 +19,55 @@ export interface MindNodeData {
 
 const HANDLE_STYLE = { opacity: 0, width: 1, height: 1, minWidth: 0, minHeight: 0, pointerEvents: 'none' as const };
 
+// Renders span (sets node size) + absolute input on top when editing.
+// Node dimensions never change when entering edit mode.
+function EditableText({
+  inputRef,
+  localText,
+  isEditing,
+  onChange,
+  onBlur,
+  onKeyDown,
+  spanClassName,
+  inputClassName,
+  spanStyle,
+  inputStyle,
+  placeholder,
+}: {
+  inputRef: React.RefObject<HTMLInputElement>;
+  localText: string;
+  isEditing: boolean;
+  onChange: (v: string) => void;
+  onBlur: () => void;
+  onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  spanClassName: string;
+  inputClassName: string;
+  spanStyle?: React.CSSProperties;
+  inputStyle?: React.CSSProperties;
+  placeholder: string;
+}) {
+  return (
+    <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      {/* Span always present — determines the node width */}
+      <span className={spanClassName} style={{ ...spanStyle, visibility: isEditing ? 'hidden' : 'visible' }}>
+        {localText || placeholder}
+      </span>
+      {/* Input overlaid when editing — same font/size as span */}
+      {isEditing && (
+        <input
+          ref={inputRef}
+          value={localText}
+          onChange={e => onChange(e.target.value)}
+          onBlur={onBlur}
+          onKeyDown={onKeyDown}
+          className={inputClassName}
+          style={{ ...inputStyle, position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+        />
+      )}
+    </div>
+  );
+}
+
 export default function MindNode({ id, data }: NodeProps<MindNodeData>) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [localText, setLocalText] = useState(data.text);
@@ -29,7 +78,12 @@ export default function MindNode({ id, data }: NodeProps<MindNodeData>) {
 
   useEffect(() => {
     if (data.isEditing) {
-      const t = setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 30);
+      const t = setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.focus({ preventScroll: true });
+          inputRef.current.select();
+        }
+      }, 30);
       return () => clearTimeout(t);
     }
   }, [data.isEditing]);
@@ -39,10 +93,15 @@ export default function MindNode({ id, data }: NodeProps<MindNodeData>) {
     data.onStopEdit(id);
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') save();
+    e.stopPropagation();
+  };
+
   // Root node
   if (isRoot) {
     return (
-      <div className="relative group" style={{ minWidth: 160 }}>
+      <div className="relative" style={{ minWidth: 160 }}>
         <div style={{
           background: `linear-gradient(135deg, ${color}, ${color}bb)`,
           borderRadius: 28,
@@ -51,22 +110,19 @@ export default function MindNode({ id, data }: NodeProps<MindNodeData>) {
             ? `0 0 0 3px white, 0 0 0 6px ${color}, 0 8px 32px ${color}55`
             : `0 6px 24px ${color}44, 0 2px 8px rgba(0,0,0,0.12)`,
           border: `2px solid ${color}`,
-          textAlign: 'center',
           cursor: 'pointer',
         }}>
-          {data.isEditing ? (
-            <input
-              ref={inputRef}
-              value={localText}
-              onChange={e => setLocalText(e.target.value)}
-              onBlur={save}
-              onKeyDown={e => { if (e.key === 'Enter') save(); e.stopPropagation(); }}
-              className="bg-transparent text-white font-black text-lg outline-none text-center"
-              style={{ width: '100%', minWidth: 120, maxWidth: 240 }}
-            />
-          ) : (
-            <span className="text-white font-black text-lg leading-tight block select-none">{data.text || 'Meu Mapa'}</span>
-          )}
+          <EditableText
+            inputRef={inputRef}
+            localText={localText}
+            isEditing={data.isEditing}
+            onChange={setLocalText}
+            onBlur={save}
+            onKeyDown={handleKeyDown}
+            placeholder="Meu Mapa"
+            spanClassName="text-white font-black text-lg leading-tight block select-none whitespace-nowrap"
+            inputClassName="bg-transparent text-white font-black text-lg outline-none text-center"
+          />
         </div>
         <Handle type="target" position={Position.Left} style={HANDLE_STYLE} />
         <Handle type="source" position={Position.Right} style={HANDLE_STYLE} />
@@ -77,7 +133,7 @@ export default function MindNode({ id, data }: NodeProps<MindNodeData>) {
   // Level 1 nodes — solid color pill
   if (data.depth === 1) {
     return (
-      <div className="relative group" style={{ minWidth: 130 }}>
+      <div className="relative" style={{ minWidth: 130 }}>
         <div
           onDoubleClick={() => data.onSelect(id)}
           style={{
@@ -87,24 +143,21 @@ export default function MindNode({ id, data }: NodeProps<MindNodeData>) {
             boxShadow: (!data.isEditing && data.selected)
               ? `0 0 0 3px white, 0 0 0 5px ${color}`
               : `0 3px 12px ${color}44`,
-            textAlign: 'center',
             cursor: 'pointer',
             position: 'relative',
           }}
         >
-          {data.isEditing ? (
-            <input
-              ref={inputRef}
-              value={localText}
-              onChange={e => setLocalText(e.target.value)}
-              onBlur={save}
-              onKeyDown={e => { if (e.key === 'Enter') save(); e.stopPropagation(); }}
-              className="bg-transparent text-white font-bold text-sm outline-none text-center"
-              style={{ width: '100%', minWidth: 80, maxWidth: 200 }}
-            />
-          ) : (
-            <span className="text-white font-bold text-sm leading-tight block select-none">{data.text || 'Nova ideia'}</span>
-          )}
+          <EditableText
+            inputRef={inputRef}
+            localText={localText}
+            isEditing={data.isEditing}
+            onChange={setLocalText}
+            onBlur={save}
+            onKeyDown={handleKeyDown}
+            placeholder="Nova ideia"
+            spanClassName="text-white font-bold text-sm leading-tight block select-none whitespace-nowrap"
+            inputClassName="bg-transparent text-white font-bold text-sm outline-none text-center"
+          />
           {data.childCount > 0 && (
             <button
               onMouseDown={e => { e.stopPropagation(); data.onToggleCollapse(id); }}
@@ -123,9 +176,9 @@ export default function MindNode({ id, data }: NodeProps<MindNodeData>) {
     );
   }
 
-  // Level 2+ nodes — colored pill
+  // Level 2+ nodes — tinted pill
   return (
-    <div className="relative group" style={{ minWidth: 110 }}>
+    <div className="relative" style={{ minWidth: 110 }}>
       <div
         onDoubleClick={() => data.onSelect(id)}
         style={{
@@ -138,27 +191,21 @@ export default function MindNode({ id, data }: NodeProps<MindNodeData>) {
             : `0 1px 4px ${color}20`,
           cursor: 'pointer',
           position: 'relative',
-          whiteSpace: 'nowrap',
         }}
       >
-        {data.isEditing ? (
-          <input
-            ref={inputRef}
-            value={localText}
-            onChange={e => setLocalText(e.target.value)}
-            onBlur={save}
-            onKeyDown={e => { if (e.key === 'Enter') save(); e.stopPropagation(); }}
-            className="outline-none text-sm font-semibold bg-transparent"
-            style={{ color, minWidth: 80, maxWidth: 200, width: `${Math.max(localText.length, 8)}ch` }}
-          />
-        ) : (
-          <span
-            className="text-sm font-semibold leading-tight block select-none"
-            style={{ color }}
-          >
-            {data.text || 'Nova ideia'}
-          </span>
-        )}
+        <EditableText
+          inputRef={inputRef}
+          localText={localText}
+          isEditing={data.isEditing}
+          onChange={setLocalText}
+          onBlur={save}
+          onKeyDown={handleKeyDown}
+          placeholder="Nova ideia"
+          spanClassName="text-sm font-semibold leading-tight block select-none whitespace-nowrap"
+          inputClassName="outline-none text-sm font-semibold bg-transparent text-center"
+          spanStyle={{ color }}
+          inputStyle={{ color }}
+        />
         {data.childCount > 0 && (
           <button
             onMouseDown={e => { e.stopPropagation(); data.onToggleCollapse(id); }}

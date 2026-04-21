@@ -1,44 +1,76 @@
 import { MindMap } from '../types';
 
-const H_GAP = 260;   // horizontal gap between depth levels
-const V_GAP = 70;    // vertical gap between sibling nodes
+const H_PADDING = 48;  // gap between right edge of parent column and left edge of child column
+const V_PADDING = 22;  // gap between bottom edge of one sibling and top of next
 
-function subtreeLeaves(map: MindMap, nodeId: string): number {
-  const node = map.nodes[nodeId];
-  if (!node || node.collapsed || node.children.length === 0) return 1;
-  return node.children.reduce((s, c) => s + subtreeLeaves(map, c), 0);
+function nodeHeight(depth: number): number {
+  if (depth === 0) return 52;
+  if (depth === 1) return 42;
+  return 36;
+}
+
+function nodeWidth(text: string, depth: number): number {
+  // Estimate rendered width from text length + padding
+  const chPx = depth === 0 ? 11 : 8.5;
+  const pad  = depth === 0 ? 56 : depth === 1 ? 36 : 32;
+  const min  = depth === 0 ? 160 : depth === 1 ? 130 : 110;
+  return Math.max(min, Math.ceil(text.length * chPx) + pad);
 }
 
 export function computeLayout(map: MindMap): Record<string, { x: number; y: number }> {
+  // Find max depth
+  let maxDepth = 0;
+  Object.values(map.nodes).forEach(n => { if (n && n.depth > maxDepth) maxDepth = n.depth; });
+
+  // Max width per depth level (so all nodes at same depth start at the same x column)
+  const maxW: number[] = Array(maxDepth + 1).fill(0);
+  Object.values(map.nodes).forEach(n => {
+    if (!n) return;
+    const w = nodeWidth(n.text, n.depth);
+    if (w > maxW[n.depth]) maxW[n.depth] = w;
+  });
+
+  // Left edge x for each depth column
+  const xCol: number[] = [0];
+  for (let d = 1; d <= maxDepth; d++) {
+    xCol[d] = xCol[d - 1] + maxW[d - 1] + H_PADDING;
+  }
+
   const positions: Record<string, { x: number; y: number }> = {};
 
-  // Place children in order, then center parent between first and last child
-  function place(nodeId: string, depth: number, yStart: number): number {
+  // Returns the next available y after placing nodeId's subtree.
+  // yStart is the top y of the first leaf in this subtree.
+  function place(nodeId: string, yStart: number): number {
     const node = map.nodes[nodeId];
-    if (!node) return yStart + V_GAP;
+    if (!node) return yStart;
 
-    const x = depth * H_GAP;
+    const x = xCol[node.depth] ?? 0;
+    const h = nodeHeight(node.depth);
 
     if (node.collapsed || node.children.length === 0) {
       positions[nodeId] = { x, y: yStart };
-      return yStart + V_GAP;
+      return yStart + h + V_PADDING;
     }
 
+    // Place all children first so we know their y positions
     let curY = yStart;
     node.children.forEach(childId => {
-      curY = place(childId, depth + 1, curY);
+      curY = place(childId, curY);
     });
 
-    const firstY = positions[node.children[0]]?.y ?? yStart;
-    const lastY = positions[node.children[node.children.length - 1]]?.y ?? yStart;
-    positions[nodeId] = { x, y: (firstY + lastY) / 2 };
+    // Center this node between the centers of first and last child
+    const firstId = node.children[0];
+    const lastId  = node.children[node.children.length - 1];
+    const firstCenter = (positions[firstId]?.y ?? yStart) + nodeHeight(map.nodes[firstId]?.depth ?? 1) / 2;
+    const lastCenter  = (positions[lastId]?.y  ?? yStart) + nodeHeight(map.nodes[lastId]?.depth  ?? 1) / 2;
+    positions[nodeId] = { x, y: (firstCenter + lastCenter) / 2 - h / 2 };
 
     return curY;
   }
 
-  place(map.rootId, 0, 0);
+  place(map.rootId, 0);
 
-  // Center whole tree around y=0
+  // Vertically center the whole tree around y = 0
   const allY = Object.values(positions).map(p => p.y);
   const minY = Math.min(...allY);
   const maxY = Math.max(...allY);
